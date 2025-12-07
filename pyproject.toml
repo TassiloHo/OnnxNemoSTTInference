@@ -1,0 +1,16 @@
+[project]
+name = "stt-export"
+version = "0.1.0"
+description = "A simple tool to export full NeMo STT models to ONNX format."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["nemo_toolkit[asr]", "torch==2.8.0", "torchaudio==2.8.0","onnxruntime", "ml_dtypes>=0.5.0", "IPython"]
+
+[tool.uv.workspace]
+members = [
+    "onnx_inference",
+]
+
+# [tool.uv.extra-build-dependencies]
+# mamba-ssm = ["torch"]
+
