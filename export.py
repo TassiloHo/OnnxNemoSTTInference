@@ -1,3 +1,4 @@
+from pathlib import Path
 from nemo.collections.asr.models import ASRModel
 from nemo.collections.asr.parts.preprocessing.features import (
     splice_frames,
@@ -131,16 +132,25 @@ def export(
     ),
 ):
     """Export a NeMo ASR model to ONNX format."""
+    model_path = Path(model_name)
+    model_basename = model_path.name
+    model_subdir = model_path.parent
+    export_target = f"{target_folder}/{model_name}.onnx"
+    Path(export_target).parent.mkdir(parents=True, exist_ok=True)
     model = ASRModel.from_pretrained(model_name, map_location="cpu")
-    model.export(f"{target_folder}/{model_name}.onnx")
+    model.export(export_target)
     model.preprocessor.featurizer.stft = types.MethodType(
         stft, model.preprocessor.featurizer
     )
     model.preprocessor.featurizer.forward = types.MethodType(
         exportable_forward, model.preprocessor.featurizer
     )
-    model.preprocessor.export(f"{target_folder}/preprocessor-{model_name}.onnx")
-    with open(f"{target_folder}/tokenizer-{model_name}.model", "wb") as f:
+    model.preprocessor.export(
+        f"{target_folder}/{model_subdir}/preprocessor-{model_basename}.onnx"
+    )
+    with open(
+        f"{target_folder}/{model_subdir}/tokenizer-{model_basename}.model", "wb"
+    ) as f:
         f.write(model.decoding.tokenizer.tokenizer.serialized_model_proto())
     typer.echo(f"Successfully exported {model_name} to {target_folder}")
 
