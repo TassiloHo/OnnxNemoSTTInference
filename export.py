@@ -9,6 +9,7 @@ import torch
 from torch import nn
 import types
 import typer
+import json
 
 
 def stft(self, x):
@@ -116,6 +117,15 @@ def exportable_forward(self, x, seq_len, linear_spec=False):
     return x, seq_len
 
 
+def extract_vocab_from_tokenizer(tokenizer) -> dict:
+    """Extract vocabulary from tokenizer to a dictionary."""
+    vocab = {}
+    for i in range(tokenizer.vocab_size):
+        piece = tokenizer.ids_to_tokens([i])[0]
+        vocab[piece] = i
+    return vocab
+
+
 app = typer.Typer()
 
 
@@ -152,6 +162,14 @@ def export(
         f"{target_folder}/{model_subdir}/tokenizer-{model_basename}.model", "wb"
     ) as f:
         f.write(model.decoding.tokenizer.tokenizer.serialized_model_proto())
+
+    # Extract and save vocabulary
+    vocab = extract_vocab_from_tokenizer(model.decoding.tokenizer)
+    vocab_path = f"{target_folder}/{model_subdir}/tokenizer-{model_basename}.vocab.json"
+    with open(vocab_path, "w", encoding="utf-8") as f:
+        json.dump(vocab, f, ensure_ascii=False, indent=2)
+    typer.echo(f"Extracted {len(vocab)} tokens to {vocab_path}")
+
     typer.echo(f"Successfully exported {model_name} to {target_folder}")
 
 
