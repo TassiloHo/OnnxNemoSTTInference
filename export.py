@@ -5,6 +5,9 @@ from nemo.collections.asr.parts.preprocessing.features import (
     normalize_batch,
     CONSTANT,
 )
+# import onnx
+# from onnxconverter_common import float16
+from onnxruntime.quantization import quantize_dynamic
 import torch
 from torch import nn
 import types
@@ -116,6 +119,30 @@ def exportable_forward(self, x, seq_len, linear_spec=False):
             x = nn.functional.pad(x, (0, pad_to - pad_amt), value=self.pad_value)
     return x, seq_len
 
+def stt_dynamic_quantization(onnx_model_path: str, quantized_model_path: str):
+    """Quantize an ONNX model to float16."""
+    quantize_dynamic(
+        onnx_model_path,
+        quantized_model_path,
+        op_types_to_quantize=[
+            "MatMul",
+            "Attention",
+            "LSTM",
+            "Gather",
+            "Transpose",
+            "EmbedLayerNormalization",
+        ],
+    )
+
+    # model = onnx.load(quantized_model_path)
+    # quantized_model = float16.convert_float_to_float16(
+    #     model,
+    #     keep_io_types=True,
+    #     op_block_list=["DynamicQuantizeLinear", "DequantizeLinear"],
+    #     disable_shape_infer=True,
+    # )
+    # onnx.save(quantized_model, quantized_model_path)
+
 
 def extract_vocab_from_tokenizer(tokenizer) -> dict:
     """Extract vocabulary from tokenizer to a dictionary."""
@@ -168,9 +195,17 @@ def export(
     vocab_path = f"{target_folder}/{model_subdir}/tokenizer-{model_basename}.vocab.json"
     with open(vocab_path, "w", encoding="utf-8") as f:
         json.dump(vocab, f, ensure_ascii=False, indent=2)
+
+    for prefix in ["encoder-", "decoder_joint-"]:
+        part_export_target = f"{target_folder}/{prefix}{model_name}.onnx"
+
+        quantized_target = f"{target_folder}/{prefix}{model_name}_qInt8.onnx"
+        stt_dynamic_quantization(part_export_target, quantized_target)
+
     typer.echo(f"Extracted {len(vocab)} tokens to {vocab_path}")
 
     typer.echo(f"Successfully exported {model_name} to {target_folder}")
+
 
 
 if __name__ == "__main__":
