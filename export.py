@@ -1,7 +1,7 @@
 import json
 import types
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import librosa
 import numpy as np
@@ -313,11 +313,15 @@ def export(
         "-o",
         help="Target folder for exported models",
     ),
-    manifest_path: str = typer.Option(
-        ...,
+    manifest_path: Optional[str] = typer.Option(
+        None,
         "--manifest",
         "-m",
-        help="Path to manifest.json for static quantization calibration",
+        help=(
+            "Path to manifest.json for static quantization calibration (optional). "
+            "If omitted or not found, the encoder will fall back to dynamic quantization "
+            "without convolution ops."
+        ),
     ),
 ):
     """Export a NeMo ASR model to ONNX format with mixed quantization."""
@@ -375,13 +379,36 @@ def export(
             continue
 
         if "encoder" in prefix:
-            # --- STATIC QUANTIZATION FOR ENCODER ---
+            # --- STATIC QUANTIZATION FOR ENCODER (or fallback to dynamic) ---
             print(f"Detected Encoder: {part_export_target}")
-            # Initialize Data Reader
-            # We use the loaded model (with patched preprocessor) to generate features
-            dr = ASREncoderDataReader(model, manifest_path)
-            stt_static_quantization(part_export_target, quantized_target, dr)
 
+            # If no manifest provided or file missing, fall back to dynamic quantization
+            if not manifest_path or not Path(manifest_path).exists():
+                print(
+                    f"No calibration manifest provided or file not found ({manifest_path}). "
+                    "Falling back to dynamic quantization for encoder (no Conv quantization)."
+                )
+                stt_dynamic_quantization(part_export_target, quantized_target)
+            else:
+                try:
+                    # Initialize Data Reader; if it ends up with no samples, also fall back
+                    dr = ASREncoderDataReader(model, manifest_path)
+                    if len(dr.data) == 0:
+                        print(
+                            "Calibration manifest contains no usable samples. "
+                            "Falling back to dynamic quantization for encoder."
+                        )
+                        stt_dynamic_quantization(part_export_target, quantized_target)
+                    else:
+                        stt_static_quantization(
+                            part_export_target, quantized_target, dr
+                        )
+                except Exception as e:
+                    print(
+                        f"Encoder static quantization failed ({e}). "
+                        "Falling back to dynamic quantization for encoder."
+                    )
+                    stt_dynamic_quantization(part_export_target, quantized_target)
         else:
             # --- DYNAMIC QUANTIZATION FOR DECODER ---
             print(f"Detected Decoder: {part_export_target}")
